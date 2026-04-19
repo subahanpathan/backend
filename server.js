@@ -34,7 +34,7 @@ const __dirname = path.dirname(__filename);
 app.use(helmet());
 
 // CORS Configuration
-const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',').map(url => url.trim());
+const corsOrigins = (process.env.CORS_ORIGIN || 'https://frontend-puce-gamma-98.vercel.app').split(',').map(url => url.trim());
 app.use(cors({
   origin: corsOrigins,
   credentials: true,

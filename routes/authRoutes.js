@@ -17,13 +17,19 @@ router.post('/register', asyncHandler(async (req, res) => {
     });
   }
 
-  // Hash password
-  const hashedPassword = await hashPassword(password);
+  if (password.length < 6) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Password must be at least 6 characters'
+    });
+  }
 
-  // Create user in Supabase
-  const { data, error } = await supabase.auth.signUp({
+  // Use admin API to create user — bypasses email confirmation requirement
+  // and guarantees data.user is always returned (not null)
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
+    email_confirm: true,   // auto-confirm so the user can log in immediately
   });
 
   if (error) {
@@ -33,7 +39,15 @@ router.post('/register', asyncHandler(async (req, res) => {
     });
   }
 
-  // Insert user profile
+  // Guard: should never be null when using admin.createUser, but just in case
+  if (!data?.user) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'User creation failed — no user returned from auth provider'
+    });
+  }
+
+  // Insert user profile into public users table
   const { error: profileError } = await supabaseAdmin
     .from('users')
     .insert([{
@@ -45,6 +59,8 @@ router.post('/register', asyncHandler(async (req, res) => {
     }]);
 
   if (profileError) {
+    // Clean up: delete auth user if profile insert fails
+    await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch(() => {});
     return res.status(400).json({
       status: 'error',
       message: profileError.message
@@ -59,6 +75,8 @@ router.post('/register', asyncHandler(async (req, res) => {
     data: {
       userId: data.user.id,
       email,
+      firstName,
+      lastName,
       token
     }
   });
