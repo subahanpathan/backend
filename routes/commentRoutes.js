@@ -69,7 +69,7 @@ router.post('/', authMiddleware, asyncHandler(async (req, res) => {
     const { data: ticket } = await supabase
       .from('bugs')
       .select(`
-        id, title, project_id, created_by, assignee_id,
+        id, title, project_id, reporter_id, assignee_id,
         project:project_id(id, name)
       `)
       .eq('id', bugId)
@@ -89,7 +89,7 @@ router.post('/', authMiddleware, asyncHandler(async (req, res) => {
 
       // Send emails to ticket owner and assignee
       const notifyUsers = new Set();
-      if (ticket.created_by) notifyUsers.add(ticket.created_by);
+      if (ticket.reporter_id) notifyUsers.add(ticket.reporter_id);
       if (ticket.assignee_id) notifyUsers.add(ticket.assignee_id);
 
       for (const userId of notifyUsers) {

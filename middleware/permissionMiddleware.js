@@ -219,7 +219,7 @@ export const canEditTicket = async (req, res, next) => {
     // Get ticket details
     const { data: ticket, error: ticketError } = await supabase
       .from('bugs')
-      .select('id, project_id, created_by, assigned_to')
+      .select('id, project_id, reporter_id, assignee_id')
       .eq('id', ticketId)
       .single();
 
@@ -254,8 +254,8 @@ export const canEditTicket = async (req, res, next) => {
 
     // Developers can only edit own or assigned tickets
     if (role === ROLES.DEVELOPER) {
-      const isCreator = ticket.created_by === userId;
-      const isAssigned = ticket.assigned_to?.includes(userId);
+      const isCreator = ticket.reporter_id === userId;
+      const isAssigned = ticket.assignee_id === userId;
 
       if (isCreator || isAssigned) {
         return next();
