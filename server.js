@@ -34,9 +34,11 @@ const __dirname = path.dirname(__filename);
 app.use(helmet());
 
 // CORS Configuration
-const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',').map(url => url.trim());
 app.use(cors({
-  origin: corsOrigins,
+  origin: function(origin, callback) {
+    // Allow all origins
+    callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
