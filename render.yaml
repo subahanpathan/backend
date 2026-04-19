@@ -25,7 +25,7 @@ services:
       - key: JWT_EXPIRE
         value: 7d
       - key: CORS_ORIGIN
-        value: https://your-frontend-url.vercel.app
+        value: https://frontend123-mq5rwwwmv-subahanpathans-projects.vercel.app
       - key: MAX_FILE_SIZE
         value: 5242880
       - key: UPLOAD_DIR
