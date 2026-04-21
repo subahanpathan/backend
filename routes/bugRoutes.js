@@ -9,7 +9,7 @@ import {
   canDeleteTicket,
   canAssignTicket
 } from '../middleware/permissionMiddleware.js';
-import emailService from '../services/emailService.mock.js'; // Using mock for testing - swap to emailService.js for real SendGrid
+import emailService from '../services/emailService.js';
 import activityService from '../services/activityService.js';
 import emailPreferenceService from '../services/emailPreferenceService.js';
 

@@ -2,6 +2,7 @@ import express from 'express';
 import { hashPassword, comparePassword, generateToken, authMiddleware } from '../utils/auth.js';
 import { supabase, supabaseAdmin } from '../config/supabase.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import validator from 'validator';
 
 const router = express.Router();
 
@@ -17,6 +18,13 @@ router.post('/register', asyncHandler(async (req, res) => {
     });
   }
 
+  if (!validator.isEmail(email)) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Please provide a valid email address'
+    });
+  }
+
   if (password.length < 6) {
     return res.status(400).json({
       status: 'error',
@@ -24,56 +32,50 @@ router.post('/register', asyncHandler(async (req, res) => {
     });
   }
 
-  // Use admin API to create user — bypasses email confirmation requirement
-  // and guarantees data.user is always returned (not null)
-  const { data, error } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,   // auto-confirm so the user can log in immediately
-  });
+  // Check if user already exists
+  const { data: existingUser } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .eq('email', email)
+    .single();
 
-  if (error) {
+  if (existingUser) {
     return res.status(400).json({
       status: 'error',
-      message: error.message
+      message: 'User with this email already exists'
     });
   }
 
-  // Guard: should never be null when using admin.createUser, but just in case
-  if (!data?.user) {
-    return res.status(500).json({
-      status: 'error',
-      message: 'User creation failed — no user returned from auth provider'
-    });
-  }
+  // Hash password
+  const hashedPassword = await hashPassword(password);
 
-  // Insert user profile into public users table
-  const { error: profileError } = await supabaseAdmin
+  // Insert user profile into public users table directly
+  const { data: user, error: profileError } = await supabaseAdmin
     .from('users')
     .insert([{
-      id: data.user.id,
       email,
+      password_hash: hashedPassword,
       first_name: firstName,
       last_name: lastName,
       role: 'developer'
-    }]);
+    }])
+    .select()
+    .single();
 
-  if (profileError) {
-    // Clean up: delete auth user if profile insert fails
-    await supabaseAdmin.auth.admin.deleteUser(data.user.id).catch(() => {});
+  if (profileError || !user) {
     return res.status(400).json({
       status: 'error',
-      message: profileError.message
+      message: profileError?.message || 'Failed to create user'
     });
   }
 
-  const token = generateToken(data.user.id);
+  const token = generateToken(user.id);
 
   res.status(201).json({
     status: 'success',
     message: 'User registered successfully',
     data: {
-      userId: data.user.id,
+      userId: user.id,
       email,
       firstName,
       lastName,
@@ -93,33 +95,44 @@ router.post('/login', asyncHandler(async (req, res) => {
     });
   }
 
-  // Authenticate with Supabase
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
+  // Get user profile
+  const { data: profile, error } = await supabaseAdmin
+    .from('users')
+    .select('*')
+    .eq('email', email)
+    .single();
 
-  if (error) {
+  if (error || !profile) {
     return res.status(401).json({
       status: 'error',
       message: 'Invalid email or password'
     });
   }
 
-  // Get user profile
-  const { data: profile } = await supabaseAdmin
-    .from('users')
-    .select('*')
-    .eq('id', data.user.id)
-    .single();
+  // Check if they registered via old supabase auth or lack password hash
+  if (!profile.password_hash) {
+    return res.status(401).json({
+      status: 'error',
+      message: 'Account not configured for local login. Please contact support.'
+    });
+  }
 
-  const token = generateToken(data.user.id);
+  const isMatch = await comparePassword(password, profile.password_hash);
+
+  if (!isMatch) {
+    return res.status(401).json({
+      status: 'error',
+      message: 'Invalid email or password'
+    });
+  }
+
+  const token = generateToken(profile.id);
 
   res.status(200).json({
     status: 'success',
     message: 'Login successful',
     data: {
-      userId: data.user.id,
+      userId: profile.id,
       email,
       profile,
       token
@@ -150,15 +163,14 @@ router.get('/me', authMiddleware, asyncHandler(async (req, res) => {
 
 // Logout
 router.post('/logout', authMiddleware, asyncHandler(async (req, res) => {
-  await supabase.auth.signOut();
-
+  // Simply acknowledge logout for client-side token deletion
   res.status(200).json({
     status: 'success',
     message: 'Logged out successfully'
   });
 }));
 
-// Change Password (with current password verification)
+// Change Password
 router.post('/change-password', authMiddleware, asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
@@ -183,37 +195,36 @@ router.post('/change-password', authMiddleware, asyncHandler(async (req, res) =>
     });
   }
 
-  // Step 1: Get the user's email from the database
+  // Get user profile
   const { data: userProfile, error: profileError } = await supabaseAdmin
     .from('users')
-    .select('email')
+    .select('id, password_hash')
     .eq('id', req.userId)
     .single();
 
-  if (profileError || !userProfile) {
+  if (profileError || !userProfile || !userProfile.password_hash) {
     return res.status(404).json({
       status: 'error',
-      message: 'User not found'
+      message: 'User not found or misconfigured'
     });
   }
 
-  // Step 2: Verify current password by attempting a sign-in
-  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-    email: userProfile.email,
-    password: currentPassword,
-  });
-
-  if (signInError || !signInData?.user) {
+  // Verify current password
+  const isMatch = await comparePassword(currentPassword, userProfile.password_hash);
+  if (!isMatch) {
     return res.status(401).json({
       status: 'error',
       message: 'Current password is incorrect'
     });
   }
 
-  // Step 3: Current password verified — update to new password
-  const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(req.userId, {
-    password: newPassword
-  });
+  // Update password
+  const hashedNewPassword = await hashPassword(newPassword);
+
+  const { error: updateError } = await supabaseAdmin
+    .from('users')
+    .update({ password_hash: hashedNewPassword })
+    .eq('id', req.userId);
 
   if (updateError) {
     return res.status(400).json({

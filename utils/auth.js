@@ -1,18 +1,26 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import dotenv from 'dotenv';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const JWT_EXPIRE = process.env.JWT_EXPIRE || '7d';
+dotenv.config();
+
+const getJwtSecret = () => process.env.JWT_SECRET || 'your-fallback-secret-for-dev';
+const getJwtExpire = () => process.env.JWT_EXPIRE || '7d';
+
+// Enforce JWT_SECRET in production
+if (process.env.NODE_ENV === 'production' && (!getJwtSecret() || getJwtSecret() === 'your-secret-key')) {
+  throw new Error('FATAL ERROR: JWT_SECRET is not set or is insecure in production.');
+}
 
 // Generate JWT Token
 export const generateToken = (userId) => {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: JWT_EXPIRE });
+  return jwt.sign({ userId }, getJwtSecret(), { expiresIn: getJwtExpire() });
 };
 
 // Verify JWT Token
 export const verifyToken = (token) => {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, getJwtSecret());
   } catch (error) {
     return null;
   }
