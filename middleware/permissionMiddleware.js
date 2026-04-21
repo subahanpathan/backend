@@ -105,6 +105,52 @@ export const isProjectOwner = async (req, res, next) => {
 };
 
 /**
+ * Check if user can view project (owner or member)
+ */
+export const canViewProject = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const projectId = req.params.projectId || req.params.id;
+
+    if (!userId || !projectId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Is owner?
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+
+    if (error) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    if (project.owner_id === userId) {
+      return next();
+    }
+
+    // Is member?
+    const { data: member } = await supabase
+      .from('project_members')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (member) {
+      return next();
+    }
+
+    return res.status(403).json({ message: 'Forbidden - You do not have access to this project' });
+  } catch (error) {
+    console.error('View project check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
  * Check if user has admin role in project
  */
 export const isProjectAdmin = async (req, res, next) => {
@@ -379,6 +425,7 @@ export const canAssignTicket = async (req, res, next) => {
 export default {
   checkPermission,
   isProjectOwner,
+  canViewProject,
   isProjectAdmin,
   isDeveloperOrAbove,
   canEditTicket,

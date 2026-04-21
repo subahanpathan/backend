@@ -2,7 +2,7 @@ import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../utils/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
-import { isProjectOwner, isProjectAdmin } from '../middleware/permissionMiddleware.js';
+import { isProjectOwner, isProjectAdmin, canViewProject } from '../middleware/permissionMiddleware.js';
 
 // Use admin client to bypass RLS for all server-side operations
 const supabase = supabaseAdmin;
@@ -13,16 +13,31 @@ const router = express.Router();
 // PROJECT ROUTES
 // ====================================
 
-// Get All Projects (user is member of)
+// Get All Projects (user is member of or owns)
 router.get('/', authMiddleware, asyncHandler(async (req, res) => {
-  const { data, error } = await supabase
+  // 1. Get project IDs where user is member
+  const { data: memberProjects } = await supabase
+    .from('project_members')
+    .select('project_id')
+    .eq('user_id', req.userId);
+
+  const memberProjectIds = memberProjects?.map(mp => mp.project_id) || [];
+
+  let query = supabase
     .from('projects')
     .select(`
       *,
       owner:owner_id(id, first_name, last_name, email),
       members:project_members(id, user_id, role, user:user_id(id, first_name, last_name, email))
-    `)
-    .order('created_at', { ascending: false });
+    `);
+
+  if (memberProjectIds.length > 0) {
+    query = query.or(`owner_id.eq.${req.userId},id.in.(${memberProjectIds.join(',')})`);
+  } else {
+    query = query.eq('owner_id', req.userId);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {
     return res.status(500).json({
