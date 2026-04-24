@@ -422,13 +422,264 @@ export const canAssignTicket = async (req, res, next) => {
   }
 };
 
+/**
+ * Check if user is a global system admin
+ */
+export const isAdmin = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (error || user.role !== ROLES.ADMIN) {
+      return res.status(403).json({ message: 'Forbidden - System Admin access required' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Admin check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user is accessing their own data or is an admin
+ */
+export const isSelfOrAdmin = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const targetUserId = req.params.id;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Check if it's the user themselves
+    if (userId === targetUserId) {
+      return next();
+    }
+
+    // Check if user is admin
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (!error && user.role === ROLES.ADMIN) {
+      return next();
+    }
+
+    res.status(403).json({ message: 'Forbidden - You can only manage your own data' });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can view a specific ticket
+ */
+export const canViewTicket = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const ticketId = req.params.id || req.params.bugId || req.params.ticketId || req.body.bugId;
+
+    if (!userId || !ticketId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Get ticket's project ID
+    const { data: ticket, error: ticketError } = await supabase
+      .from('bugs')
+      .select('project_id')
+      .eq('id', ticketId)
+      .single();
+
+    if (ticketError) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    const projectId = ticket.project_id;
+
+    // Is project owner?
+    const { data: project } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+
+    if (project?.owner_id === userId) {
+      return next();
+    }
+
+    // Is member?
+    const { data: membership } = await supabase
+      .from('project_members')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (membership) {
+      return next();
+    }
+
+    return res.status(403).json({ message: 'Forbidden - You do not have access to this ticket' });
+  } catch (error) {
+    console.error('View ticket check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can edit/delete a comment
+ */
+export const canManageComment = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const commentId = req.params.id;
+
+    if (!userId || !commentId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Get comment details
+    const { data: comment, error: commentError } = await supabase
+      .from('comments')
+      .select('author_id, bug_id')
+      .eq('id', commentId)
+      .single();
+
+    if (commentError) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    // Author can always manage their own comment
+    if (comment.author_id === userId) {
+      return next();
+    }
+
+    // Project owner/admin can also manage comments
+    const { data: ticket } = await supabase
+      .from('bugs')
+      .select('project_id')
+      .eq('id', comment.bug_id)
+      .single();
+
+    if (ticket) {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', ticket.project_id)
+        .single();
+
+      if (project?.owner_id === userId) {
+        return next();
+      }
+
+      const { data: membership } = await supabase
+        .from('project_members')
+        .select('role')
+        .eq('project_id', ticket.project_id)
+        .eq('user_id', userId)
+        .single();
+
+      if (membership?.role === ROLES.ADMIN) {
+        return next();
+      }
+    }
+
+    return res.status(403).json({ message: 'Forbidden - You cannot manage this comment' });
+  } catch (error) {
+    console.error('Manage comment check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Check if user can delete an attachment
+ */
+export const canManageAttachment = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const attachmentId = req.params.id;
+
+    if (!userId || !attachmentId) {
+      return res.status(400).json({ message: 'Bad Request' });
+    }
+
+    // Get attachment details
+    const { data: attachment, error: attachmentError } = await supabase
+      .from('attachments')
+      .select('uploaded_by, bug_id')
+      .eq('id', attachmentId)
+      .single();
+
+    if (attachmentError) {
+      return res.status(404).json({ message: 'Attachment not found' });
+    }
+
+    // Uploader can always manage their own attachment
+    if (attachment.uploaded_by === userId) {
+      return next();
+    }
+
+    // Project owner/admin can also manage attachments
+    const { data: ticket } = await supabase
+      .from('bugs')
+      .select('project_id')
+      .eq('id', attachment.bug_id)
+      .single();
+
+    if (ticket) {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('owner_id')
+        .eq('id', ticket.project_id)
+        .single();
+
+      if (project?.owner_id === userId) {
+        return next();
+      }
+
+      const { data: membership } = await supabase
+        .from('project_members')
+        .select('role')
+        .eq('project_id', ticket.project_id)
+        .eq('user_id', userId)
+        .single();
+
+      if (membership?.role === ROLES.ADMIN) {
+        return next();
+      }
+    }
+
+    return res.status(403).json({ message: 'Forbidden - You cannot manage this attachment' });
+  } catch (error) {
+    console.error('Manage attachment check error:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
 export default {
   checkPermission,
   isProjectOwner,
   canViewProject,
+  canViewTicket,
+  canManageComment,
+  canManageAttachment,
   isProjectAdmin,
   isDeveloperOrAbove,
   canEditTicket,
   canDeleteTicket,
-  canAssignTicket
+  canAssignTicket,
+  isAdmin,
+  isSelfOrAdmin
 };

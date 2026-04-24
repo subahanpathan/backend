@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../utils/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { canViewTicket, canManageAttachment } from '../middleware/permissionMiddleware.js';
 
 const supabase = supabaseAdmin;
 
@@ -37,7 +38,7 @@ const upload = multer({
 });
 
 // Upload Attachment
-router.post('/', authMiddleware, upload.single('file'), asyncHandler(async (req, res) => {
+router.post('/', authMiddleware, canViewTicket, upload.single('file'), asyncHandler(async (req, res) => {
   const { bugId } = req.body;
 
   if (!bugId || !req.file) {
@@ -75,7 +76,7 @@ router.post('/', authMiddleware, upload.single('file'), asyncHandler(async (req,
 }));
 
 // Get Bug Attachments
-router.get('/bug/:bugId', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/bug/:bugId', authMiddleware, canViewTicket, asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('attachments')
     .select('*')
@@ -96,7 +97,7 @@ router.get('/bug/:bugId', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 // Delete Attachment
-router.delete('/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/:id', authMiddleware, canManageAttachment, asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('attachments')
     .delete()
@@ -113,6 +114,55 @@ router.delete('/:id', authMiddleware, asyncHandler(async (req, res) => {
     status: 'success',
     message: 'Attachment deleted successfully'
   });
+}));
+
+// Securely stream attachment
+router.get('/stream/:filename', authMiddleware, asyncHandler(async (req, res) => {
+  const { filename } = req.params;
+
+  // Find attachment record to verify access
+  const { data: attachment, error } = await supabase
+    .from('attachments')
+    .select('*, bug:bug_id(id, project_id)')
+    .eq('file_name', filename)
+    .single();
+
+  if (error || !attachment) {
+    return res.status(404).json({ message: 'File not found' });
+  }
+
+  // Verify project membership
+  const projectId = attachment.bug.project_id;
+  const userId = req.userId;
+
+  // Check owner
+  const { data: project } = await supabase
+    .from('projects')
+    .select('owner_id')
+    .eq('id', projectId)
+    .single();
+
+  let hasAccess = project?.owner_id === userId;
+
+  if (!hasAccess) {
+    // Check member
+    const { data: membership } = await supabase
+      .from('project_members')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .single();
+    
+    if (membership) hasAccess = true;
+  }
+
+  if (!hasAccess) {
+    return res.status(403).json({ message: 'Forbidden - You do not have access to this file' });
+  }
+
+  // Stream file
+  const filePath = path.join(__dirname, '../uploads', filename);
+  res.sendFile(filePath);
 }));
 
 export default router;

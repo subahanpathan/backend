@@ -2,13 +2,14 @@ import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../utils/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { isAdmin, isSelfOrAdmin } from '../middleware/permissionMiddleware.js';
 
 const supabase = supabaseAdmin;
 
 const router = express.Router();
 
-// Get All Users
-router.get('/', authMiddleware, asyncHandler(async (req, res) => {
+// Get All Users (Admin Only)
+router.get('/', authMiddleware, isAdmin, asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('users')
     .select('id, email, first_name, last_name, role, created_at')
@@ -27,8 +28,8 @@ router.get('/', authMiddleware, asyncHandler(async (req, res) => {
   });
 }));
 
-// Get User Profile
-router.get('/:id', authMiddleware, asyncHandler(async (req, res) => {
+// Get User Profile (Self or Admin)
+router.get('/:id', authMiddleware, isSelfOrAdmin, asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('users')
     .select('id, email, first_name, last_name, role, created_at')
@@ -48,17 +49,30 @@ router.get('/:id', authMiddleware, asyncHandler(async (req, res) => {
   });
 }));
 
-// Update User Profile
-router.put('/:id', authMiddleware, asyncHandler(async (req, res) => {
+// Update User Profile (Self or Admin)
+router.put('/:id', authMiddleware, isSelfOrAdmin, asyncHandler(async (req, res) => {
   const { firstName, lastName, role } = req.body;
+
+  // Security: Only admins can change roles
+  const updateData = {
+    first_name: firstName,
+    last_name: lastName
+  };
+
+  // Check if current user is admin before allowing role update
+  const { data: currentUser } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', req.userId)
+    .single();
+
+  if (role && currentUser?.role === 'admin') {
+    updateData.role = role;
+  }
 
   const { data, error } = await supabase
     .from('users')
-    .update({
-      first_name: firstName,
-      last_name: lastName,
-      role
-    })
+    .update(updateData)
     .eq('id', req.params.id)
     .select();
 
@@ -76,8 +90,8 @@ router.put('/:id', authMiddleware, asyncHandler(async (req, res) => {
   });
 }));
 
-// Delete User
-router.delete('/:id', authMiddleware, asyncHandler(async (req, res) => {
+// Delete User (Self or Admin)
+router.delete('/:id', authMiddleware, isSelfOrAdmin, asyncHandler(async (req, res) => {
   const { error } = await supabase
     .from('users')
     .delete()

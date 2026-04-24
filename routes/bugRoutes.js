@@ -5,6 +5,8 @@ import { asyncHandler } from '../middleware/errorHandler.js';
 import {
   isDeveloperOrAbove,
   isProjectAdmin,
+  canViewProject,
+  canViewTicket,
   canEditTicket,
   canDeleteTicket,
   canAssignTicket
@@ -23,7 +25,7 @@ const router = express.Router();
 // ====================================
 
 // Get All Tickets (with filters)
-router.get('/', authMiddleware, isDeveloperOrAbove, asyncHandler(async (req, res) => {
+router.get('/', authMiddleware, canViewProject, isDeveloperOrAbove, asyncHandler(async (req, res) => {
   const { projectId, status, priority, assigneeId, isUnassigned, search } = req.query;
 
   if (!projectId) {
@@ -80,7 +82,7 @@ router.get('/', authMiddleware, isDeveloperOrAbove, asyncHandler(async (req, res
 }));
 
 // Get Single Ticket
-router.get('/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/:id', authMiddleware, canViewTicket, asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('bugs')
     .select(`
@@ -106,7 +108,7 @@ router.get('/:id', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 // Create Ticket
-router.post('/', authMiddleware, isDeveloperOrAbove, asyncHandler(async (req, res) => {
+router.post('/', authMiddleware, canViewProject, isDeveloperOrAbove, asyncHandler(async (req, res) => {
   const { title, description, projectId, priority = 'medium', issueType = 'bug', assigneeId } = req.body;
 
   // Validation

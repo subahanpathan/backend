@@ -53,7 +53,7 @@ router.get('/', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 // Get Single Project
-router.get('/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/:id', authMiddleware, canViewProject, asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('projects')
     .select(`
@@ -201,7 +201,7 @@ router.delete('/:id', authMiddleware, isProjectOwner, asyncHandler(async (req, r
 // ====================================
 
 // Get Project Members
-router.get('/:id/members', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/:id/members', authMiddleware, canViewProject, asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('project_members')
     .select(`

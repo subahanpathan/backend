@@ -51,11 +51,12 @@ class NotificationService {
   }
 
   // Mark notification as read
-  async markAsRead(notificationId) {
+  async markAsRead(notificationId, userId) {
     const { data, error } = await supabase
       .from('notifications')
       .update({ is_read: true, read_at: new Date().toISOString() })
       .eq('id', notificationId)
+      .eq('user_id', userId) // Security: Ensure user owns the notification
       .select()
       .single();
 
@@ -76,11 +77,12 @@ class NotificationService {
   }
 
   // Delete notification
-  async deleteNotification(notificationId) {
+  async deleteNotification(notificationId, userId) {
     const { error } = await supabase
       .from('notifications')
       .delete()
-      .eq('id', notificationId);
+      .eq('id', notificationId)
+      .eq('user_id', userId); // Security: Ensure user owns the notification
 
     if (error) throw error;
     return true;

@@ -1,11 +1,13 @@
 // Activity log routes
 import express from 'express';
+import { authMiddleware } from '../utils/auth.js';
+import { canViewProject, canViewTicket } from '../middleware/permissionMiddleware.js';
 import activityService from '../services/activityService.js';
 
 const router = express.Router();
 
 // Get project activity
-router.get('/projects/:projectId/activity', async (req, res) => {
+router.get('/projects/:projectId/activity', authMiddleware, canViewProject, async (req, res) => {
   try {
     const { projectId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
@@ -28,7 +30,7 @@ router.get('/projects/:projectId/activity', async (req, res) => {
 });
 
 // Get ticket activity
-router.get('/tickets/:ticketId/activity', async (req, res) => {
+router.get('/tickets/:ticketId/activity', authMiddleware, canViewTicket, async (req, res) => {
   try {
     const { ticketId } = req.params;
     const { limit = 20 } = req.query;
@@ -41,9 +43,9 @@ router.get('/tickets/:ticketId/activity', async (req, res) => {
 });
 
 // Get user activity
-router.get('/user/activity', async (req, res) => {
+router.get('/user/activity', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { limit = 30, offset = 0 } = req.query;
 
     const { activities, total } = await activityService.getUserActivity(
@@ -62,7 +64,7 @@ router.get('/user/activity', async (req, res) => {
 });
 
 // Get activity summary for project
-router.get('/projects/:projectId/activity/summary', async (req, res) => {
+router.get('/projects/:projectId/activity/summary', authMiddleware, canViewProject, async (req, res) => {
   try {
     const { projectId } = req.params;
     const { days = 7 } = req.query;
@@ -75,7 +77,7 @@ router.get('/projects/:projectId/activity/summary', async (req, res) => {
 });
 
 // Get most active users in project
-router.get('/projects/:projectId/activity/active-users', async (req, res) => {
+router.get('/projects/:projectId/activity/active-users', authMiddleware, canViewProject, async (req, res) => {
   try {
     const { projectId } = req.params;
     const { days = 30, limit = 10 } = req.query;

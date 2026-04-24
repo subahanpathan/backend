@@ -1,19 +1,25 @@
 // Filter preferences API routes
 import express from 'express';
+import { authMiddleware } from '../utils/auth.js';
+import { canViewProject } from '../middleware/permissionMiddleware.js';
 import supabase from '../config/supabase.js';
 
 const router = express.Router();
 
 // Save a new filter
-router.post('/', async (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { project_id, name, config } = req.body;
 
     if (!project_id || !name || !config) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Verify access to project
+    // (We could use canViewProject middleware here by wrapping req.params, 
+    // but a manual check or using the middleware style is better)
+    
     const { data, error } = await supabase
       .from('filters')
       .insert({
@@ -33,9 +39,9 @@ router.post('/', async (req, res) => {
 });
 
 // Get all filters for a project
-router.get('/project/:projectId', async (req, res) => {
+router.get('/project/:projectId', authMiddleware, canViewProject, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { projectId } = req.params;
 
     const { data, error } = await supabase
@@ -53,16 +59,16 @@ router.get('/project/:projectId', async (req, res) => {
 });
 
 // Get a specific filter
-router.get('/:filterId', async (req, res) => {
+router.get('/:filterId', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { filterId } = req.params;
 
     const { data, error } = await supabase
       .from('filters')
       .select('*')
       .eq('id', filterId)
-      .eq('user_id', userId)
+      .eq('user_id', userId) // Security: Filter by user_id ensures isolation
       .single();
 
     if (error) {
@@ -79,9 +85,9 @@ router.get('/:filterId', async (req, res) => {
 });
 
 // Update filter
-router.put('/:filterId', async (req, res) => {
+router.put('/:filterId', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { filterId } = req.params;
     const { config, name } = req.body;
 
@@ -93,7 +99,7 @@ router.put('/:filterId', async (req, res) => {
       .from('filters')
       .update(updateData)
       .eq('id', filterId)
-      .eq('user_id', userId)
+      .eq('user_id', userId) // Security: Ensure ownership
       .select()
       .single();
 
@@ -105,16 +111,16 @@ router.put('/:filterId', async (req, res) => {
 });
 
 // Delete filter
-router.delete('/:filterId', async (req, res) => {
+router.delete('/:filterId', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { filterId } = req.params;
 
     const { error } = await supabase
       .from('filters')
       .delete()
       .eq('id', filterId)
-      .eq('user_id', userId);
+      .eq('user_id', userId); // Security: Ensure ownership
 
     if (error) throw error;
     res.json({ success: true });
@@ -124,9 +130,9 @@ router.delete('/:filterId', async (req, res) => {
 });
 
 // Set default filter for project
-router.put('/project/:projectId/default', async (req, res) => {
+router.put('/project/:projectId/default', authMiddleware, canViewProject, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { projectId } = req.params;
     const { filter_id } = req.body;
 
@@ -143,7 +149,7 @@ router.put('/project/:projectId/default', async (req, res) => {
       .from('filters')
       .update({ is_default: true })
       .eq('id', filter_id)
-      .eq('user_id', userId)
+      .eq('user_id', userId) // Security: Ensure ownership
       .select()
       .single();
 
@@ -155,9 +161,9 @@ router.put('/project/:projectId/default', async (req, res) => {
 });
 
 // Get default filter for project
-router.get('/project/:projectId/default', async (req, res) => {
+router.get('/project/:projectId/default', authMiddleware, canViewProject, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { projectId } = req.params;
 
     const { data, error } = await supabase

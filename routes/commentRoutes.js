@@ -5,13 +5,14 @@ import { asyncHandler } from '../middleware/errorHandler.js';
 import emailService from '../services/emailService.mock.js'; // Using mock for testing - swap to emailService.js for real SendGrid
 import activityService from '../services/activityService.js';
 import emailPreferenceService from '../services/emailPreferenceService.js';
+import { canViewTicket, canManageComment } from '../middleware/permissionMiddleware.js';
 
 const supabase = supabaseAdmin;
 
 const router = express.Router();
 
 // Get Bug Comments with Author Info
-router.get('/bug/:bugId', authMiddleware, asyncHandler(async (req, res) => {
+router.get('/bug/:bugId', authMiddleware, canViewTicket, asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('comments')
     .select(`
@@ -35,7 +36,7 @@ router.get('/bug/:bugId', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 // Add Comment
-router.post('/', authMiddleware, asyncHandler(async (req, res) => {
+router.post('/', authMiddleware, canViewTicket, asyncHandler(async (req, res) => {
   const { bugId, content } = req.body;
 
   if (!bugId || !content) {
@@ -120,7 +121,7 @@ router.post('/', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 // Update Comment
-router.put('/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.put('/:id', authMiddleware, canManageComment, asyncHandler(async (req, res) => {
   const { content } = req.body;
 
   const { data, error } = await supabase
@@ -147,7 +148,7 @@ router.put('/:id', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 // Delete Comment
-router.delete('/:id', authMiddleware, asyncHandler(async (req, res) => {
+router.delete('/:id', authMiddleware, canManageComment, asyncHandler(async (req, res) => {
   // Get comment info before deletion
   const { data: comment, error: commentError } = await supabase
     .from('comments')

@@ -1,13 +1,14 @@
 // Email preferences routes
 import express from 'express';
+import { authMiddleware } from '../utils/auth.js';
 import emailPreferenceService from '../services/emailPreferenceService.js';
 
 const router = express.Router();
 
 // Get user email preferences
-router.get('/user/email-preferences', async (req, res) => {
+router.get('/user/email-preferences', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const preferences = await emailPreferenceService.getPreferences(userId);
     res.json(preferences);
   } catch (error) {
@@ -16,9 +17,9 @@ router.get('/user/email-preferences', async (req, res) => {
 });
 
 // Update user email preferences
-router.put('/user/email-preferences', async (req, res) => {
+router.put('/user/email-preferences', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const updates = req.body;
 
     const preferences = await emailPreferenceService.updatePreferences(userId, updates);
@@ -29,9 +30,9 @@ router.put('/user/email-preferences', async (req, res) => {
 });
 
 // Update single preference
-router.patch('/user/email-preferences/:key', async (req, res) => {
+router.patch('/user/email-preferences/:key', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { key } = req.params;
     const { value } = req.body;
 
@@ -47,9 +48,9 @@ router.patch('/user/email-preferences/:key', async (req, res) => {
 });
 
 // Disable all emails
-router.post('/user/email-preferences/disable-all', async (req, res) => {
+router.post('/user/email-preferences/disable-all', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const preferences = await emailPreferenceService.disableAllEmails(userId);
     res.json(preferences);
   } catch (error) {
@@ -58,9 +59,9 @@ router.post('/user/email-preferences/disable-all', async (req, res) => {
 });
 
 // Enable all emails
-router.post('/user/email-preferences/enable-all', async (req, res) => {
+router.post('/user/email-preferences/enable-all', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const preferences = await emailPreferenceService.enableAllEmails(userId);
     res.json(preferences);
   } catch (error) {

@@ -1,14 +1,14 @@
 // Notification API routes
 import express from 'express';
-import { checkPermission } from '../middleware/permissionMiddleware.js';
+import { authMiddleware } from '../utils/auth.js';
 import notificationService from '../services/notificationService.js';
 
 const router = express.Router();
 
 // Get all user notifications (paginated)
-router.get('/', async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { limit = 20, offset = 0 } = req.query;
 
     const { notifications, total } = await notificationService.getUserNotifications(
@@ -29,9 +29,9 @@ router.get('/', async (req, res) => {
 });
 
 // Get unread notification count
-router.get('/unread/count', async (req, res) => {
+router.get('/unread/count', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const count = await notificationService.getUnreadCount(userId);
     res.json({ count });
   } catch (error) {
@@ -40,9 +40,9 @@ router.get('/unread/count', async (req, res) => {
 });
 
 // Get notifications by type
-router.get('/type/:type', async (req, res) => {
+router.get('/type/:type', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const { type } = req.params;
     const { limit = 20 } = req.query;
 
@@ -59,32 +59,36 @@ router.get('/type/:type', async (req, res) => {
 });
 
 // Mark notification as read
-router.put('/:notificationId/read', async (req, res) => {
+router.put('/:notificationId/read', authMiddleware, async (req, res) => {
   try {
     const { notificationId } = req.params;
-    const notification = await notificationService.markAsRead(notificationId);
+    const userId = req.userId;
+    const notification = await notificationService.markAsRead(notificationId, userId);
     res.json(notification);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(error.code === 'PGRST116' ? 404 : 500).json({ 
+      error: error.message || 'Notification not found or access denied' 
+    });
   }
 });
 
 // Mark all notifications as read
-router.put('/read-all', async (req, res) => {
+router.put('/read-all', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     const notifications = await notificationService.markAllAsRead(userId);
-    res.json({ marked: notifications.length });
+    res.json({ marked: notifications?.length || 0 });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Delete notification
-router.delete('/:notificationId', async (req, res) => {
+router.delete('/:notificationId', authMiddleware, async (req, res) => {
   try {
     const { notificationId } = req.params;
-    await notificationService.deleteNotification(notificationId);
+    const userId = req.userId;
+    await notificationService.deleteNotification(notificationId, userId);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -92,9 +96,9 @@ router.delete('/:notificationId', async (req, res) => {
 });
 
 // Delete all notifications
-router.delete('/', async (req, res) => {
+router.delete('/', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.userId;
     await notificationService.deleteAllNotifications(userId);
     res.json({ success: true });
   } catch (error) {
